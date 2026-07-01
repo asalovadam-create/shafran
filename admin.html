@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SHAFRAN · admin</title>
+<style>
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+    background:#0b0a08;color:#f5efe4;font-family:-apple-system,sans-serif;padding:20px;}
+  .card{width:100%;max-width:400px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);
+    border-radius:24px;padding:28px;backdrop-filter:blur(20px);}
+  h1{font-size:20px;margin:0 0 18px;}
+  label{display:block;font-size:12px;color:#a79a87;margin:14px 0 6px;text-transform:uppercase;letter-spacing:.05em;}
+  input{width:100%;padding:12px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.14);
+    background:rgba(255,255,255,.07);color:#f5efe4;font-size:15px;box-sizing:border-box;}
+  button{width:100%;margin-top:16px;padding:13px;border:none;border-radius:14px;font-weight:600;
+    background:linear-gradient(135deg,#e8a33d,#c9791b);color:#1c1305;cursor:pointer;font-size:15px;}
+  button.secondary{background:rgba(255,255,255,.1);color:#f5efe4;}
+  #log{margin-top:16px;font-size:12px;color:#a79a87;white-space:pre-wrap;word-break:break-word;}
+  table{width:100%;border-collapse:collapse;margin-top:14px;font-size:12px;}
+  td,th{padding:6px 4px;border-bottom:1px solid rgba(255,255,255,.08);text-align:left;}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>SHAFRAN · панель администратора</h1>
+
+  <label>Ключ администратора</label>
+  <input id="adminKey" type="password" placeholder="admin key">
+
+  <label>Секунд до старта выдачи номеров</label>
+  <input id="seconds" type="number" value="60" min="1">
+
+  <button id="startBtn">Запустить таймер для всех</button>
+  <button id="resetBtn" class="secondary">Сбросить (новый забег)</button>
+  <button id="statsBtn" class="secondary">Показать статистику</button>
+
+  <div id="log"></div>
+  <div id="statsBox"></div>
+</div>
+
+<script>
+const log = (t) => document.getElementById("log").textContent = t;
+
+document.getElementById("startBtn").onclick = async () => {
+  const admin_key = document.getElementById("adminKey").value;
+  const seconds = Number(document.getElementById("seconds").value);
+  const res = await fetch("/api/admin/timer", {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ admin_key, seconds })
+  });
+  const data = await res.json();
+  log(res.ok ? "Таймер запущен, окончание: " + data.timer_end : "Ошибка: " + data.detail);
+};
+
+document.getElementById("resetBtn").onclick = async () => {
+  const admin_key = document.getElementById("adminKey").value;
+  const res = await fetch("/api/admin/reset", {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ admin_key, wipe_users: false })
+  });
+  const data = await res.json();
+  log(res.ok ? "Сброшено. Можно запускать новый забег." : "Ошибка: " + data.detail);
+};
+
+document.getElementById("statsBtn").onclick = async () => {
+  const admin_key = document.getElementById("adminKey").value;
+  const res = await fetch("/api/admin/stats?admin_key=" + encodeURIComponent(admin_key));
+  const data = await res.json();
+  if (!res.ok) { log("Ошибка: " + data.detail); return; }
+  log(`Следующий номер: ${data.next_number} · Всего пользователей: ${data.users.length}`);
+  const rows = data.users.map(u =>
+    `<tr><td>${u.queue_number ?? "—"}</td><td>${u.first_name} ${u.last_name}</td><td>${u.phone}</td></tr>`
+  ).join("");
+  document.getElementById("statsBox").innerHTML =
+    `<table><tr><th>№</th><th>Имя</th><th>Телефон</th></tr>${rows}</table>`;
+};
+</script>
+</body>
+</html>

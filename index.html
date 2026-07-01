@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>SHAFRAN</title>
+<meta name="theme-color" content="#0b0a08">
+<meta name="description" content="SHAFRAN — женские платки и аксессуары">
+
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SHAFRAN">
+
+<link rel="preconnect" href="https://res.cloudinary.com" crossorigin>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preload" as="image" href="/static/bg.jpg">
+
+<style>
+/* ============ шрифт для цифр таймера — грузится асинхронно, не блокирует отрисовку ============ */
+@font-face{
+  font-family:'Fraunces';
+  src:local('Fraunces');
+  font-display:swap;
+}
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" media="print" onload="this.media='all'">
+
+<style>
+:root{
+  --bg:#0b0a08;
+  --glass:rgba(255,255,255,.06);
+  --glass-strong:rgba(255,255,255,.10);
+  --glass-border:rgba(255,255,255,.14);
+  --saffron:#e8a33d;
+  --saffron-deep:#c9791b;
+  --cream:#f5efe4;
+  --muted:#a79a87;
+  --danger:#e0684f;
+  --radius:28px;
+  --safe-top:env(safe-area-inset-top,0px);
+  --safe-bottom:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{margin:0;padding:0;height:100%;}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
+  color:var(--cream);
+  background:var(--bg);
+  overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ---------- фон: изображение + затемнение для читаемости ---------- */
+.bg{
+  position:fixed;inset:0;z-index:-2;
+  background:url('/static/bg.jpg') center/cover no-repeat, var(--bg);
+  transform:scale(1.03);
+}
+.bg::after{
+  content:"";position:absolute;inset:0;
+  background:
+    radial-gradient(120% 80% at 50% -10%, rgba(11,10,8,.35), rgba(11,10,8,.85) 60%),
+    linear-gradient(180deg, rgba(11,10,8,.55) 0%, rgba(11,10,8,.75) 40%, rgba(11,10,8,.95) 100%);
+}
+
+/* ---------- стеклянные карточки (liquid glass) ---------- */
+.glass{
+  background:var(--glass);
+  border:1px solid var(--glass-border);
+  border-radius:var(--radius);
+  backdrop-filter:blur(28px) saturate(160%);
+  -webkit-backdrop-filter:blur(28px) saturate(160%);
+  box-shadow:0 8px 32px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.12);
+  position:relative;
+  overflow:hidden;
+}
+.glass::before{
+  content:"";position:absolute;inset:0;
+  background:linear-gradient(135deg, rgba(255,255,255,.10), rgba(255,255,255,0) 40%);
+  pointer-events:none;
+}
+
+/* ---------- шапка / логотип ---------- */
+.topbar{
+  position:sticky;top:0;z-index:20;
+  padding:calc(var(--safe-top) + 14px) 20px 12px;
+  display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(180deg, rgba(11,10,8,.75), rgba(11,10,8,0));
+}
+.logo{height:34px;filter:drop-shadow(0 0 18px rgba(232,163,61,.45));}
+.logo-fallback{
+  font-family:'Fraunces',serif;font-weight:600;letter-spacing:.14em;
+  font-size:20px;color:var(--cream);
+}
+.logo-fallback b{color:var(--saffron);}
+
+/* ---------- контейнеры экранов ---------- */
+.screen{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;}
+.hidden{display:none!important;}
+
+/* ---------- форма входа ---------- */
+.auth-card{width:100%;max-width:380px;padding:32px 26px 28px;text-align:center;}
+.auth-card h1{
+  font-family:'Fraunces',serif;font-weight:600;font-size:28px;margin:0 0 6px;
+  letter-spacing:.01em;
+}
+.auth-card p{color:var(--muted);font-size:14px;margin:0 0 26px;line-height:1.5;}
+.field{text-align:left;margin-bottom:14px;}
+.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;letter-spacing:.03em;text-transform:uppercase;}
+.field input{
+  width:100%;padding:14px 16px;border-radius:16px;
+  background:rgba(255,255,255,.07);
+  border:1px solid var(--glass-border);
+  color:var(--cream);font-size:16px;outline:none;
+  transition:border-color .2s, background .2s;
+}
+.field input::placeholder{color:rgba(245,239,228,.35);}
+.field input:focus{border-color:var(--saffron);background:rgba(255,255,255,.1);}
+
+.btn{
+  appearance:none;border:none;cursor:pointer;width:100%;
+  padding:15px 20px;border-radius:18px;font-size:16px;font-weight:600;
+  color:#1c1305;
+  background:linear-gradient(135deg,var(--saffron),var(--saffron-deep));
+  box-shadow:0 6px 24px rgba(232,163,61,.35);
+  transition:transform .15s ease, box-shadow .15s ease, opacity .2s;
+}
+.btn:active{transform:scale(.97);}
+.btn:disabled{opacity:.45;cursor:not-allowed;box-shadow:none;}
+.btn-ghost{
+  background:var(--glass-strong);color:var(--cream);
+  box-shadow:none;border:1px solid var(--glass-border);
+}
+.error-msg{color:var(--danger);font-size:13px;margin-top:10px;min-height:16px;}
+
+/* ---------- экран после входа ---------- */
+.main-scroll{width:100%;max-width:520px;margin:0 auto;padding:0 18px calc(60px + var(--safe-bottom));}
+.hello{text-align:center;padding:6px 0 18px;}
+.hello .name{font-family:'Fraunces',serif;font-size:22px;font-weight:600;}
+.hello .sub{color:var(--muted);font-size:13px;margin-top:2px;}
+
+.timer-card{padding:34px 20px 30px;text-align:center;margin-bottom:22px;}
+.timer-label{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:14px;}
+.timer-digits{
+  font-family:'Fraunces',serif;font-weight:600;
+  font-size:clamp(40px,12vw,64px);
+  letter-spacing:.01em;line-height:1;
+  color:var(--cream);
+  text-shadow:0 0 40px rgba(232,163,61,.35);
+}
+.timer-digits .sep{color:var(--saffron);opacity:.7;margin:0 2px;}
+.timer-sub{margin-top:12px;color:var(--muted);font-size:13px;}
+
+/* пульс-свечение, когда таймер запущен */
+.timer-card.live .timer-digits{animation:pulseGlow 2.4s ease-in-out infinite;}
+@keyframes pulseGlow{
+  0%,100%{text-shadow:0 0 40px rgba(232,163,61,.25);}
+  50%{text-shadow:0 0 60px rgba(232,163,61,.55);}
+}
+
+/* капля/вспышка шафрана в момент открытия очереди */
+.burst{
+  position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(circle at 50% 50%, rgba(232,163,61,.55), rgba(232,163,61,0) 60%);
+  opacity:0;
+}
+.burst.play{animation:burstAnim 900ms ease-out;}
+@keyframes burstAnim{
+  0%{opacity:.9;transform:scale(.2);}
+  100%{opacity:0;transform:scale(2.4);}
+}
+
+.claim-btn{margin-top:18px;}
+.number-reveal{margin-top:18px;}
+.number-reveal .big{
+  font-family:'Fraunces',serif;font-weight:600;font-size:52px;color:var(--saffron);
+  text-shadow:0 0 30px rgba(232,163,61,.5);
+}
+.number-reveal .cap{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:4px;}
+.claimed-count{margin-top:14px;font-size:12px;color:var(--muted);}
+
+/* ---------- каталог ---------- */
+.section-title{
+  font-family:'Fraunces',serif;font-weight:600;font-size:20px;
+  margin:6px 4px 14px;display:flex;align-items:baseline;justify-content:space-between;
+}
+.section-title span{font-size:12px;color:var(--muted);font-family:-apple-system,sans-serif;letter-spacing:.05em;text-transform:uppercase;}
+
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:10px;}
+.card{overflow:hidden;}
+.card .img-wrap{aspect-ratio:3/4;width:100%;overflow:hidden;background:rgba(255,255,255,.04);}
+.card img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .5s ease;}
+.card:active img{transform:scale(1.04);}
+.card .info{padding:12px 14px 16px;}
+.card .cname{font-size:14px;font-weight:600;color:var(--cream);}
+.card .cdesc{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.4;}
+.badge{
+  display:inline-block;margin-top:8px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+  padding:4px 9px;border-radius:20px;
+}
+.badge.in{background:rgba(232,163,61,.16);color:var(--saffron);}
+.badge.out{background:rgba(255,255,255,.08);color:var(--muted);}
+
+footer{text-align:center;color:var(--muted);font-size:11px;padding:26px 0 10px;letter-spacing:.04em;}
+
+/* ---------- утилиты ---------- */
+.spinner{
+  width:20px;height:20px;border-radius:50%;
+  border:2px solid rgba(28,19,5,.35);border-top-color:#1c1305;
+  animation:spin .7s linear infinite;display:inline-block;vertical-align:-4px;margin-right:8px;
+}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+@media (prefers-reduced-motion: reduce){
+  *{animation-duration:.001ms!important;animation-iteration-count:1!important;transition:none!important;}
+}
+</style>
+</head>
+<body>
+
+<div class="bg"></div>
+
+<div class="topbar">
+  <img src="/static/logo.png" class="logo" alt="SHAFRAN" onerror="this.style.display='none';document.getElementById('logoFallback').style.display='block';">
+  <div id="logoFallback" class="logo-fallback" style="display:none">SH<b>A</b>FRAN</div>
+</div>
+
+<!-- ===================== ЭКРАН ВХОДА ===================== -->
+<section id="authScreen" class="screen">
+  <div class="auth-card glass">
+    <h1>Добро пожаловать</h1>
+    <p>Войдите, чтобы участвовать в розыгрыше номеров и смотреть каталог SHAFRAN</p>
+
+    <form id="authForm" autocomplete="off">
+      <div class="field">
+        <label for="phone">Номер телефона</label>
+        <input id="phone" type="tel" inputmode="tel" placeholder="+7 900 000-00-00" required>
+      </div>
+      <div class="field">
+        <label for="firstName">Имя</label>
+        <input id="firstName" type="text" placeholder="Ваше имя" required>
+      </div>
+      <div class="field">
+        <label for="lastName">Фамилия</label>
+        <input id="lastName" type="text" placeholder="Ваша фамилия" required>
+      </div>
+      <button class="btn" type="submit" id="authBtn">Войти</button>
+      <div class="error-msg" id="authError"></div>
+    </form>
+  </div>
+</section>
+
+<!-- ===================== ОСНОВНОЙ ЭКРАН ===================== -->
+<section id="mainScreen" class="screen hidden" style="align-items:stretch;padding-top:8px;">
+  <div class="main-scroll">
+
+    <div class="hello">
+      <div class="name" id="helloName">—</div>
+      <div class="sub">рады видеть вас в SHAFRAN</div>
+    </div>
+
+    <div class="timer-card glass" id="timerCard">
+      <div class="burst" id="burst"></div>
+      <div class="timer-label" id="timerLabel">до старта выдачи номеров</div>
+      <div class="timer-digits" id="timerDigits">— : — : —</div>
+      <div class="timer-sub" id="timerSub">ожидайте, скоро начнём</div>
+
+      <button class="btn claim-btn hidden" id="claimBtn">Получить номер</button>
+
+      <div class="number-reveal hidden" id="numberReveal">
+        <div class="cap">ваш номер в очереди</div>
+        <div class="big" id="numberBig">—</div>
+      </div>
+
+      <div class="claimed-count" id="claimedCount"></div>
+    </div>
+
+    <div class="section-title">Каталог <span id="catalogCount"></span></div>
+    <div class="grid" id="catalogGrid"></div>
+
+    <footer>SHAFRAN · сделано с любовью к деталям</footer>
+  </div>
+</section>
+
+<script>
+/* =========================================================================
+   SHAFRAN — клиентская логика
+   ========================================================================= */
+
+const API = "";
+const state = {
+  token: localStorage.getItem("shafran_token") || null,
+  timerEnd: null,
+  timerRunning: false,
+  queueNumber: null,
+  ws: null,
+  countdownTimer: null,
+};
+
+// ---------- элементы ----------
+const authScreen   = document.getElementById("authScreen");
+const mainScreen   = document.getElementById("mainScreen");
+const authForm     = document.getElementById("authForm");
+const authBtn      = document.getElementById("authBtn");
+const authError    = document.getElementById("authError");
+const helloName    = document.getElementById("helloName");
+const timerCard    = document.getElementById("timerCard");
+const timerLabel   = document.getElementById("timerLabel");
+const timerDigits  = document.getElementById("timerDigits");
+const timerSub     = document.getElementById("timerSub");
+const claimBtn     = document.getElementById("claimBtn");
+const numberReveal = document.getElementById("numberReveal");
+const numberBig    = document.getElementById("numberBig");
+const claimedCount = document.getElementById("claimedCount");
+const burst        = document.getElementById("burst");
+
+// ---------- вход ----------
+authForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  authError.textContent = "";
+  authBtn.disabled = true;
+  authBtn.innerHTML = '<span class="spinner"></span>Входим…';
+
+  const phone = document.getElementById("phone").value.trim();
+  const firstName = document.getElementById("firstName").value.trim();
+  const lastName = document.getElementById("lastName").value.trim();
+
+  try {
+    const res = await fetch(`${API}/api/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, first_name: firstName, last_name: lastName }),
+    });
+    if (!res.ok) throw new Error((await res.json()).detail || "Ошибка входа");
+    const data = await res.json();
+
+    localStorage.setItem("shafran_token", data.token);
+    localStorage.setItem("shafran_name", `${data.first_name} ${data.last_name}`);
+    state.token = data.token;
+    state.queueNumber = data.queue_number;
+
+    enterMain(data.first_name);
+  } catch (err) {
+    authError.textContent = err.message || "Не удалось войти, попробуйте ещё раз";
+  } finally {
+    authBtn.disabled = false;
+    authBtn.textContent = "Войти";
+  }
+});
+
+// ---------- переход на главный экран ----------
+async function enterMain(firstName) {
+  helloName.textContent = firstName || localStorage.getItem("shafran_name") || "";
+  authScreen.classList.add("hidden");
+  mainScreen.classList.remove("hidden");
+
+  if (state.queueNumber) showNumber(state.queueNumber);
+
+  await refreshState();
+  connectWS();
+  renderCatalog();
+}
+
+// ---------- если токен уже есть — сразу входим ----------
+(async function boot() {
+  if (!state.token) return;
+  try {
+    const res = await fetch(`${API}/api/me?token=${encodeURIComponent(state.token)}`);
+    if (!res.ok) throw new Error();
+    const me = await res.json();
+    state.queueNumber = me.queue_number;
+    enterMain(me.first_name);
+  } catch {
+    localStorage.removeItem("shafran_token");
+  }
+})();
+
+// ---------- состояние / таймер ----------
+async function refreshState() {
+  try {
+    const res = await fetch(`${API}/api/state`);
+    const data = await res.json();
+    applyState(data);
+  } catch {
+    timerSub.textContent = "нет соединения, повторяем попытку…";
+  }
+}
+
+function applyState(data) {
+  const wasOpen = state.timerRunning && state.timerEnd && (Date.now() >= new Date(state.timerEnd).getTime());
+  state.timerEnd = data.timer_end;
+  state.timerRunning = data.timer_running;
+  updateClaimedLabel(data.claimed_count);
+  restartCountdownLoop();
+}
+
+function updateClaimedLabel(count) {
+  if (typeof count === "number") {
+    claimedCount.textContent = count > 0 ? `номеров уже выдано: ${count}` : "";
+  }
+}
+
+function restartCountdownLoop() {
+  if (state.countdownTimer) clearInterval(state.countdownTimer);
+  tickCountdown();
+  state.countdownTimer = setInterval(tickCountdown, 250);
+}
+
+function fmt(n){ return String(n).padStart(2,"0"); }
+
+function tickCountdown() {
+  if (!state.timerRunning || !state.timerEnd) {
+    timerLabel.textContent = "до старта выдачи номеров";
+    timerDigits.innerHTML = "— <span class='sep'>:</span> — <span class='sep'>:</span> —";
+    timerSub.textContent = "ожидайте, скоро начнём";
+    timerCard.classList.remove("live");
+    claimBtn.classList.add("hidden");
+    return;
+  }
+
+  const end = new Date(state.timerEnd).getTime();
+  const diff = end - Date.now();
+
+  if (diff > 0) {
+    timerCard.classList.add("live");
+    timerLabel.textContent = "до открытия розыгрыша номеров";
+    const totalSec = Math.floor(diff / 1000);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    timerDigits.innerHTML = `${fmt(h)}<span class="sep">:</span>${fmt(m)}<span class="sep">:</span>${fmt(s)}`;
+    timerSub.textContent = "будьте рядом — как только время выйдет, появится кнопка";
+    claimBtn.classList.add("hidden");
+  } else {
+    // время вышло
+    timerCard.classList.remove("live");
+    timerLabel.textContent = "розыгрыш открыт";
+    timerDigits.innerHTML = "00<span class='sep'>:</span>00<span class='sep'>:</span>00";
+
+    if (state.queueNumber) {
+      timerSub.textContent = "ваш номер уже закреплён";
+      claimBtn.classList.add("hidden");
+      showNumber(state.queueNumber);
+    } else {
+      timerSub.textContent = "жмите скорее — номера уходят по одному";
+      claimBtn.classList.remove("hidden");
+      claimBtn.disabled = false;
+      claimBtn.textContent = "Получить номер";
+      playBurstOnce();
+    }
+  }
+}
+
+let burstPlayed = false;
+function playBurstOnce() {
+  if (burstPlayed) return;
+  burstPlayed = true;
+  burst.classList.add("play");
+  setTimeout(() => burst.classList.remove("play"), 950);
+}
+
+// ---------- получение номера ----------
+claimBtn.addEventListener("click", async () => {
+  claimBtn.disabled = true;
+  claimBtn.innerHTML = '<span class="spinner"></span>Получаем номер…';
+  try {
+    const res = await fetch(`${API}/api/claim`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: state.token }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Не удалось получить номер");
+    state.queueNumber = data.queue_number;
+    showNumber(data.queue_number);
+  } catch (err) {
+    claimBtn.disabled = false;
+    claimBtn.textContent = "Попробовать снова";
+    timerSub.textContent = err.message;
+  }
+});
+
+function showNumber(num) {
+  claimBtn.classList.add("hidden");
+  numberReveal.classList.remove("hidden");
+  numberBig.textContent = "№ " + num;
+}
+
+// ---------- websocket: мгновенный старт таймера у всех разом ----------
+function connectWS() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const ws = new WebSocket(`${proto}://${location.host}/ws`);
+  state.ws = ws;
+
+  ws.onmessage = (ev) => {
+    try {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === "timer_start") {
+        state.timerEnd = msg.timer_end;
+        state.timerRunning = true;
+        burstPlayed = false;
+        restartCountdownLoop();
+      } else if (msg.type === "claimed_count") {
+        updateClaimedLabel(msg.claimed_count);
+      } else if (msg.type === "reset") {
+        state.timerEnd = null;
+        state.timerRunning = false;
+        state.queueNumber = null;
+        burstPlayed = false;
+        numberReveal.classList.add("hidden");
+        restartCountdownLoop();
+      }
+    } catch {}
+  };
+
+  ws.onclose = () => {
+    // переподключение + подстраховочный опрос состояния
+    setTimeout(connectWS, 2000);
+  };
+}
+
+// подстраховка на случай обрыва WS: сверяемся с сервером раз в 20 сек
+setInterval(() => { if (document.visibilityState === "visible") refreshState(); }, 20000);
+
+// ---------- каталог платков (эффектная витрина, без корзины) ----------
+const PRODUCTS = [
+  { name: "Персик и шёлк", desc: "шёлковый платок ручной обработки края", img: "https://res.cloudinary.com/demo/image/upload/f_auto,q_auto,w_600/samples/ecommerce/leather-bag-gray.jpg", inStock: true },
+  { name: "Шафрановый закат", desc: "хлопок-шёлк, крупный принт", img: "https://res.cloudinary.com/demo/image/upload/f_auto,q_auto,w_600/samples/ecommerce/shoes.png", inStock: true },
+  { name: "Ночной сад", desc: "кашемировая смесь, тёмный тон", img: "https://res.cloudinary.com/demo/image/upload/f_auto,q_auto,w_600/samples/ecommerce/analog-classic.jpg", inStock: false },
+  { name: "Молочная роза", desc: "лёгкий шёлк, пастельный узор", img: "https://res.cloudinary.com/demo/image/upload/f_auto,q_auto,w_600/samples/ecommerce/accessories-bag.jpg", inStock: true },
+];
+
+function renderCatalog() {
+  const grid = document.getElementById("catalogGrid");
+  const count = document.getElementById("catalogCount");
+  count.textContent = `${PRODUCTS.length} моделей`;
+  grid.innerHTML = PRODUCTS.map(p => `
+    <div class="card glass">
+      <div class="img-wrap"><img src="${p.img}" alt="${p.name}" loading="lazy" decoding="async"></div>
+      <div class="info">
+        <div class="cname">${p.name}</div>
+        <div class="cdesc">${p.desc}</div>
+        <span class="badge ${p.inStock ? 'in' : 'out'}">${p.inStock ? 'в наличии' : 'нет в наличии'}</span>
+      </div>
+    </div>
+  `).join("");
+}
+
+// ---------- PWA: регистрация service worker ----------
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
