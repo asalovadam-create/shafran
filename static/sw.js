@@ -1,18 +1,19 @@
 /*
   SHAFRAN service worker.
   Стратегия:
-  - "оболочка" сайта (html/css/js/шрифты/картинки логотипа и фона) — cache-first,
-    поэтому после первого визита сайт открывается мгновенно, даже на плохой сети;
-  - все запросы к /api/* и /ws — всегда идут в сеть напрямую (никогда не кэшируются),
-    иначе таймер и номера будут "залипать";
-  - если появляется новая версия оболочки — она тихо подгружается в фоне
-    и подменяет кэш для следующего визита (stale-while-revalidate).
+  - HTML (сама страница) — network-first: сначала всегда пробуем сеть,
+    чтобы человек мгновенно видел последнюю версию сайта после каждого
+    обновления, и только если сети совсем нет — отдаём то, что есть в кэше.
+  - статичные файлы (фон, логотип, иконки, manifest) — cache-first,
+    они меняются редко, поэтому грузим их с диска устройства мгновенно.
+  - /api/* и /ws — никогда не кэшируются, всегда идут в сеть напрямую.
+
+  ВАЖНО: при каждом обновлении дизайна меняйте CACHE_NAME (например v2, v3…) —
+  это гарантированно сбрасывает старый кэш у всех, кто уже открывал сайт.
 */
 
-const CACHE_NAME = "shafran-shell-v1";
-const SHELL_FILES = [
-  "/",
-  "/static/index.html",
+const CACHE_NAME = "shafran-shell-v2";
+const STATIC_FILES = [
   "/static/bg.jpg",
   "/static/logo.png",
   "/manifest.json",
@@ -21,7 +22,7 @@ const SHELL_FILES = [
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) =>
-      cache.addAll(SHELL_FILES).catch(() => {})
+      cache.addAll(STATIC_FILES).catch(() => {})
     )
   );
   self.skipWaiting();
@@ -39,13 +40,33 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
-  // API и WebSocket — никогда не кэшируем, всегда свежие данные
   if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/ws")) {
+    return; // всегда сеть, никогда не кэшируем
+  }
+  if (event.request.method !== "GET") return;
+
+  const isHTML =
+    event.request.mode === "navigate" ||
+    url.pathname === "/" ||
+    url.pathname.endsWith(".html");
+
+  if (isHTML) {
+    // network-first: свежая версия сайта всегда в приоритете
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response && response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
     return;
   }
 
-  if (event.request.method !== "GET") return;
-
+  // остальное (картинки, manifest) — cache-first для мгновенной загрузки
   event.respondWith(
     caches.match(event.request).then((cached) => {
       const network = fetch(event.request)
