@@ -67,6 +67,7 @@ body{
   width:100vw;height:100dvh;
   z-index:-2;
   background:url('/static/bg.jpg') center/cover no-repeat, var(--bg);
+  will-change:transform;
 }
 .bg::after{
   content:"";position:absolute;inset:0;
@@ -249,6 +250,43 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:26px 0 10px;l
 }
 @keyframes spin{to{transform:rotate(360deg);}}
 
+/* ---------- дорогие плавные анимации ---------- */
+@keyframes fadeSlideUp{
+  from{opacity:0;transform:translateY(22px);}
+  to{opacity:1;transform:translateY(0);}
+}
+.hello, .timer-card{
+  animation:fadeSlideUp .7s cubic-bezier(.16,1,.3,1) both;
+}
+.timer-card{animation-delay:.08s;}
+.section-title{animation:fadeSlideUp .7s cubic-bezier(.16,1,.3,1) .16s both;}
+
+.card{
+  opacity:0;transform:translateY(28px) scale(.98);
+  transition:opacity .7s cubic-bezier(.16,1,.3,1), transform .7s cubic-bezier(.16,1,.3,1);
+}
+.card.in-view{opacity:1;transform:translateY(0) scale(1);}
+
+@keyframes numberPop{
+  0%{opacity:0;transform:scale(.5);}
+  60%{opacity:1;transform:scale(1.12);}
+  100%{opacity:1;transform:scale(1);}
+}
+.number-reveal.pop .big{animation:numberPop .55s cubic-bezier(.34,1.56,.64,1) both;}
+
+.modal-overlay{
+  opacity:0;transition:opacity .25s ease;
+}
+.modal-overlay.open{opacity:1;}
+.modal-card{
+  transform:scale(.9) translateY(10px);opacity:0;
+  transition:transform .35s cubic-bezier(.16,1,.3,1), opacity .3s ease;
+}
+.modal-overlay.open .modal-card{transform:scale(1) translateY(0);opacity:1;}
+
+.profile-btn{transition:transform .2s cubic-bezier(.34,1.56,.64,1), background .2s;}
+.claim-btn{transition:transform .15s ease, box-shadow .15s ease, opacity .2s;}
+
 @media (prefers-reduced-motion: reduce){
   *{animation-duration:.001ms!important;animation-iteration-count:1!important;transition:none!important;}
 }
@@ -365,9 +403,11 @@ const burst         = document.getElementById("burst");
 function openAuth() {
   authError.textContent = "";
   authOverlay.classList.remove("hidden");
+  requestAnimationFrame(() => requestAnimationFrame(() => authOverlay.classList.add("open")));
 }
 function closeAuth() {
-  authOverlay.classList.add("hidden");
+  authOverlay.classList.remove("open");
+  setTimeout(() => authOverlay.classList.add("hidden"), 250);
 }
 profileBtn.addEventListener("click", () => {
   if (state.token) return; // уже вошли — иконка просто показывает инициал
@@ -558,7 +598,10 @@ async function doClaim() {
 function showNumber(num) {
   claimBtn.classList.add("hidden");
   numberReveal.classList.remove("hidden");
+  numberReveal.classList.remove("pop");
   numberBig.textContent = "№ " + num;
+  void numberReveal.offsetWidth; // рестарт анимации
+  numberReveal.classList.add("pop");
 }
 
 // ---------- websocket ----------
@@ -595,18 +638,18 @@ setInterval(() => { if (document.visibilityState === "visible") refreshState(); 
 
 // ---------- каталог: masonry, разные пропорции карточек ----------
 const PRODUCTS = [
-  { name: "Персик и шёлк", desc: "шёлковый платок ручной обработки края", img: "https://res.cloudinary.com/demo/image/upload/f_auto,q_auto,w_600/samples/ecommerce/leather-bag-gray.jpg", inStock: true, ar: "3/4" },
-  { name: "Шафрановый закат", desc: "хлопок-шёлк, крупный принт", img: "https://res.cloudinary.com/demo/image/upload/f_auto,q_auto,w_600/samples/ecommerce/shoes.png", inStock: true, ar: "1/1" },
-  { name: "Ночной сад", desc: "кашемировая смесь, тёмный тон", img: "https://res.cloudinary.com/demo/image/upload/f_auto,q_auto,w_600/samples/ecommerce/analog-classic.jpg", inStock: false, ar: "4/5" },
-  { name: "Молочная роза", desc: "лёгкий шёлк, пастельный узор", img: "https://res.cloudinary.com/demo/image/upload/f_auto,q_auto,w_600/samples/ecommerce/accessories-bag.jpg", inStock: true, ar: "5/7" },
+  { name: "Персик и шёлк", desc: "шёлковый платок ручной обработки края", img: "https://res.cloudinary.com/demo/image/upload/f_auto,q_auto,g_auto,c_fill,w_600,h_800/samples/ecommerce/leather-bag-gray.jpg", inStock: true, ar: "3/4" },
+  { name: "Шафрановый закат", desc: "хлопок-шёлк, крупный принт", img: "https://res.cloudinary.com/demo/image/upload/f_auto,q_auto,g_auto,c_fill,w_600,h_600/samples/ecommerce/shoes.png", inStock: true, ar: "1/1" },
+  { name: "Ночной сад", desc: "кашемировая смесь, тёмный тон", img: "https://res.cloudinary.com/demo/image/upload/f_auto,q_auto,g_auto,c_fill,w_600,h_750/samples/ecommerce/analog-classic.jpg", inStock: false, ar: "4/5" },
+  { name: "Молочная роза", desc: "лёгкий шёлк, пастельный узор", img: "https://res.cloudinary.com/demo/image/upload/f_auto,q_auto,g_auto,c_fill,w_600,h_840/samples/ecommerce/accessories-bag.jpg", inStock: true, ar: "5/7" },
 ];
 
 function renderCatalog() {
   const grid = document.getElementById("catalogGrid");
   const count = document.getElementById("catalogCount");
   count.textContent = `${PRODUCTS.length} моделей`;
-  grid.innerHTML = PRODUCTS.map(p => `
-    <div class="card glass">
+  grid.innerHTML = PRODUCTS.map((p, i) => `
+    <div class="card glass" style="transition-delay:${i * 70}ms">
       <div class="img-wrap" style="aspect-ratio:${p.ar}"><img src="${p.img}" alt="${p.name}" loading="lazy" decoding="async"></div>
       <div class="info">
         <div class="cname">${p.name}</div>
@@ -615,7 +658,40 @@ function renderCatalog() {
       </div>
     </div>
   `).join("");
+
+  // плавное появление карточек при скролле (дороже смотрится, чем "всё сразу")
+  const cards = grid.querySelectorAll(".card");
+  if ("IntersectionObserver" in window) {
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add("in-view");
+          io.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.15, rootMargin: "0px 0px -40px 0px" });
+    cards.forEach((c) => io.observe(c));
+  } else {
+    cards.forEach((c) => c.classList.add("in-view"));
+  }
 }
+
+// ---------- мягкий параллакс фона при скролле (без изменения размеров) ----------
+(function initParallax() {
+  const bg = document.querySelector(".bg");
+  if (!bg || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  let ticking = false;
+  function onScroll() {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => {
+      const offset = Math.min(window.scrollY * 0.06, 40); // ограничено, фон не "уезжает"
+      bg.style.transform = `translate3d(0, ${offset}px, 0)`;
+      ticking = false;
+    });
+  }
+  window.addEventListener("scroll", onScroll, { passive: true });
+})();
 
 // ---------- PWA ----------
 if ("serviceWorker" in navigator) {
