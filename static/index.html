@@ -285,6 +285,53 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:26px 0 10px;l
 .profile-btn{transition:transform .2s cubic-bezier(.34,1.56,.64,1), background .2s;}
 .claim-btn{transition:transform .15s ease, box-shadow .15s ease, opacity .2s;}
 
+/* ---------- shimmer-плейсхолдер + blur-up для фото товаров ---------- */
+.img-wrap{position:relative;}
+.img-wrap::before{
+  content:"";position:absolute;inset:0;
+  background:linear-gradient(100deg, rgba(255,255,255,.03) 25%, rgba(255,255,255,.09) 45%, rgba(255,255,255,.03) 65%);
+  background-size:200% 100%;
+  animation:shimmer 1.6s ease-in-out infinite;
+}
+.img-wrap.loaded::before{display:none;}
+.card img{opacity:0;transition:opacity .55s ease;}
+.card img.loaded{opacity:1;}
+@keyframes shimmer{
+  0%{background-position:180% 0;}
+  100%{background-position:-20% 0;}
+}
+
+/* ---------- ripple на кнопках ---------- */
+.btn{position:relative;overflow:hidden;}
+.ripple{
+  position:absolute;border-radius:50%;
+  background:rgba(255,255,255,.55);
+  transform:scale(0);opacity:.6;
+  animation:rippleAnim .6s ease-out forwards;
+  pointer-events:none;
+}
+@keyframes rippleAnim{to{transform:scale(2.8);opacity:0;}}
+
+/* ---------- шафрановое конфетти при получении номера ---------- */
+.confetti-piece{
+  width:6px;height:11px;border-radius:2px;
+  background:var(--saffron);
+  opacity:0;pointer-events:none;
+  animation:confettiFly .9s cubic-bezier(.2,.7,.3,1) forwards;
+}
+@keyframes confettiFly{
+  0%{opacity:1;transform:translate(-50%,-50%) rotate(0deg);}
+  100%{opacity:0;transform:translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(var(--rot));}
+}
+
+/* ---------- лёгкий пульс таймера при смене секунды ---------- */
+.timer-digits.tick{animation:digitTick .35s ease;}
+@keyframes digitTick{
+  0%{transform:scale(1);}
+  35%{transform:scale(1.035);}
+  100%{transform:scale(1);}
+}
+
 @media (prefers-reduced-motion: reduce){
   *{animation-duration:.001ms!important;animation-iteration-count:1!important;transition:none!important;}
 }
@@ -501,7 +548,8 @@ function applyState(data) {
 
 function updateClaimedLabel(count) {
   if (typeof count === "number") {
-    claimedCount.textContent = count > 0 ? `номеров уже выдано: ${count}` : "";
+    animateClaimedCount(lastClaimedShown, count);
+    lastClaimedShown = count;
   }
 }
 
@@ -512,6 +560,15 @@ function restartCountdownLoop() {
 }
 
 function fmt(n){ return String(n).padStart(2,"0"); }
+
+let lastTickSecond = null;
+function pulseDigits(totalSec) {
+  if (totalSec === lastTickSecond) return;
+  lastTickSecond = totalSec;
+  timerDigits.classList.remove("tick");
+  void timerDigits.offsetWidth;
+  timerDigits.classList.add("tick");
+}
 
 function tickCountdown() {
   if (!state.timerRunning || !state.timerEnd) {
@@ -536,6 +593,7 @@ function tickCountdown() {
     timerDigits.innerHTML = `${fmt(h)}<span class="sep">:</span>${fmt(m)}<span class="sep">:</span>${fmt(s)}`;
     timerSub.textContent = "будьте рядом — как только время выйдет, появится кнопка";
     claimBtn.classList.add("hidden");
+    pulseDigits(totalSec);
   } else {
     timerCard.classList.remove("live");
     timerLabel.textContent = "розыгрыш открыт";
@@ -600,6 +658,8 @@ function showNumber(num) {
   numberBig.textContent = "№ " + num;
   void numberReveal.offsetWidth; // рестарт анимации
   numberReveal.classList.add("pop");
+  spawnConfetti(timerCard);
+  if (navigator.vibrate) navigator.vibrate([12, 40, 12]);
 }
 
 // ---------- websocket ----------
@@ -676,6 +736,18 @@ function renderCatalog() {
 
   grid.innerHTML = colItems.map(items => `<div class="grid-col">${items.join("")}</div>`).join("");
 
+  // blur-up: убираем shimmer и плавно проявляем фото после загрузки
+  grid.querySelectorAll(".card img").forEach((img) => {
+    const wrap = img.closest(".img-wrap");
+    const markLoaded = () => { img.classList.add("loaded"); wrap.classList.add("loaded"); };
+    if (img.complete && img.naturalWidth > 0) {
+      markLoaded();
+    } else {
+      img.addEventListener("load", markLoaded, { once: true });
+      img.addEventListener("error", markLoaded, { once: true }); // не залипаем на shimmer, если фото не загрузилось
+    }
+  });
+
   const cards = grid.querySelectorAll(".card");
   if ("IntersectionObserver" in window) {
     const io = new IntersectionObserver((entries) => {
@@ -692,7 +764,64 @@ function renderCatalog() {
   }
 }
 
-// ---------- мягкий параллакс фона при скролле (без изменения размеров) ----------
+// ---------- ripple-эффект на всех .btn ----------
+document.addEventListener("pointerdown", (e) => {
+  const btn = e.target.closest(".btn");
+  if (!btn || btn.disabled) return;
+  const rect = btn.getBoundingClientRect();
+  const size = Math.max(rect.width, rect.height) * 1.2;
+  const ripple = document.createElement("span");
+  ripple.className = "ripple";
+  ripple.style.width = ripple.style.height = size + "px";
+  ripple.style.left = (e.clientX - rect.left - size / 2) + "px";
+  ripple.style.top = (e.clientY - rect.top - size / 2) + "px";
+  btn.appendChild(ripple);
+  setTimeout(() => ripple.remove(), 650);
+});
+
+// ---------- шафрановое конфетти (поверх страницы, чтобы не обрезалось стеклом) ----------
+function spawnConfetti(anchorEl) {
+  const rect = anchorEl.getBoundingClientRect();
+  const originX = rect.left + rect.width / 2;
+  const originY = rect.top + rect.height * 0.35;
+
+  for (let i = 0; i < 16; i++) {
+    const piece = document.createElement("span");
+    piece.className = "confetti-piece";
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 70 + Math.random() * 90;
+    piece.style.position = "fixed";
+    piece.style.left = originX + "px";
+    piece.style.top = originY + "px";
+    piece.style.setProperty("--dx", `${Math.cos(angle) * dist}px`);
+    piece.style.setProperty("--dy", `${Math.sin(angle) * dist}px`);
+    piece.style.setProperty("--rot", `${(Math.random() * 360) - 180}deg`);
+    piece.style.animationDelay = `${Math.random() * 80}ms`;
+    piece.style.background = Math.random() > 0.5 ? "var(--saffron)" : "var(--saffron-deep)";
+    piece.style.zIndex = "60";
+    document.body.appendChild(piece);
+    setTimeout(() => piece.remove(), 1100);
+  }
+}
+
+// ---------- плавный счётчик выданных номеров ----------
+let lastClaimedShown = 0;
+function animateClaimedCount(from, to) {
+  if (from === to) {
+    claimedCount.textContent = to > 0 ? `номеров уже выдано: ${to}` : "";
+    return;
+  }
+  const start = performance.now();
+  const dur = 500;
+  function step(now) {
+    const t = Math.min((now - start) / dur, 1);
+    const eased = 1 - Math.pow(1 - t, 3);
+    const val = Math.round(from + (to - from) * eased);
+    claimedCount.textContent = val > 0 ? `номеров уже выдано: ${val}` : "";
+    if (t < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
 (function initParallax() {
   const bg = document.querySelector(".bg");
   if (!bg || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
