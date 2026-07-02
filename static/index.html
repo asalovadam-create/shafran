@@ -179,11 +179,9 @@ body{
 }
 .section-title span{font-size:12px;color:var(--muted);font-family:-apple-system,sans-serif;letter-spacing:.05em;text-transform:uppercase;}
 
-.grid{column-count:2;column-gap:14px;}
-.card{
-  break-inside:avoid;-webkit-column-break-inside:avoid;
-  margin-bottom:14px;display:inline-block;width:100%;
-}
+.grid{display:flex;gap:14px;align-items:flex-start;}
+.grid-col{display:flex;flex-direction:column;gap:14px;flex:1;min-width:0;}
+.card{width:100%;}
 .card .img-wrap{width:100%;overflow:hidden;background:rgba(255,255,255,.04);}
 .card img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .5s ease;}
 .card:active img{transform:scale(1.04);}
@@ -648,18 +646,36 @@ function renderCatalog() {
   const grid = document.getElementById("catalogGrid");
   const count = document.getElementById("catalogCount");
   count.textContent = `${PRODUCTS.length} моделей`;
-  grid.innerHTML = PRODUCTS.map((p, i) => `
-    <div class="card glass" style="transition-delay:${i * 70}ms">
-      <div class="img-wrap" style="aspect-ratio:${p.ar}"><img src="${p.img}" alt="${p.name}" loading="lazy" decoding="async"></div>
-      <div class="info">
-        <div class="cname">${p.name}</div>
-        <div class="cdesc">${p.desc}</div>
-        <span class="badge ${p.inStock ? 'in' : 'out'}">${p.inStock ? 'в наличии' : 'нет в наличии'}</span>
-      </div>
-    </div>
-  `).join("");
 
-  // плавное появление карточек при скролле (дороже смотрится, чем "всё сразу")
+  // настоящая masonry-раскладка: каждую карточку кладём в тот столбец,
+  // который на данный момент короче — порядок предсказуем и стабилен,
+  // в отличие от CSS column-count (который сначала заполняет весь левый
+  // столбец, а потом правый, из-за чего карточки "скачут").
+  const INFO_HEIGHT = 0.42; // условная высота текстового блока под фото
+  const colHeights = [0, 0];
+  const colItems = [[], []];
+
+  PRODUCTS.forEach((p, i) => {
+    const [w, h] = p.ar.split("/").map(Number);
+    const imgHeight = h / w; // относительная высота при равной ширине столбцов
+    const score = imgHeight + INFO_HEIGHT;
+
+    const col = colHeights[0] <= colHeights[1] ? 0 : 1;
+    colHeights[col] += score;
+    colItems[col].push(`
+      <div class="card glass" style="transition-delay:${i * 70}ms">
+        <div class="img-wrap" style="aspect-ratio:${p.ar}"><img src="${p.img}" alt="${p.name}" loading="lazy" decoding="async"></div>
+        <div class="info">
+          <div class="cname">${p.name}</div>
+          <div class="cdesc">${p.desc}</div>
+          <span class="badge ${p.inStock ? 'in' : 'out'}">${p.inStock ? 'в наличии' : 'нет в наличии'}</span>
+        </div>
+      </div>
+    `);
+  });
+
+  grid.innerHTML = colItems.map(items => `<div class="grid-col">${items.join("")}</div>`).join("");
+
   const cards = grid.querySelectorAll(".card");
   if ("IntersectionObserver" in window) {
     const io = new IntersectionObserver((entries) => {
