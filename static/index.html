@@ -47,17 +47,28 @@ html{
   height:100%;
   touch-action:manipulation;
   -webkit-text-size-adjust:100%;
-  overscroll-behavior-y:none;
+  overflow:hidden;
 }
 body{
-  margin:0;padding:0;min-height:100%;
+  margin:0;padding:0;height:100%;
   font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
   color:var(--cream);
   background:var(--bg);
-  overflow-x:hidden;
+  overflow:hidden;
   touch-action:manipulation;
-  overscroll-behavior-y:none;
   -webkit-font-smoothing:antialiased;
+}
+
+/* весь скролл происходит внутри этого контейнера, а не в html/body —
+   благодаря этому нативный "резиновый" bounce-скролл iOS никогда не
+   показывает пустоту/чёрную область за пределами страницы */
+.app-scroll{
+  position:relative;
+  height:100dvh;
+  overflow-y:auto;
+  overflow-x:hidden;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior-y:contain;
 }
 
 /* ---------- фон: фиксированная картинка, не растягивается при скролле/зуме ---------- */
@@ -133,6 +144,12 @@ body{
 .hello .name{font-family:'Fraunces',serif;font-size:22px;font-weight:600;}
 .hello .sub{color:var(--muted);font-size:13px;margin-top:2px;}
 
+.admin-panel{padding:22px 20px;margin-bottom:18px;}
+.admin-title{
+  font-family:'Fraunces',serif;font-weight:600;font-size:16px;
+  margin-bottom:14px;color:var(--saffron);
+}
+
 /* ---------- таймер ---------- */
 .timer-card{padding:34px 20px 30px;text-align:center;margin-bottom:22px;}
 .timer-label{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:14px;}
@@ -171,6 +188,16 @@ body{
 }
 .number-reveal .cap{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:4px;}
 .claimed-count{margin-top:14px;font-size:12px;color:var(--muted);}
+
+.save-contact-btn{
+  width:100%;display:flex;align-items:center;justify-content:center;gap:9px;
+  padding:15px 18px;margin-bottom:22px;
+  background:var(--glass);color:var(--cream);
+  font-size:14px;font-weight:600;cursor:pointer;border:1px solid var(--glass-border);
+  transition:transform .15s ease;
+}
+.save-contact-btn:active{transform:scale(.97);}
+.save-contact-btn svg{flex-shrink:0;color:var(--saffron);}
 
 /* ---------- каталог: masonry в стиле Pinterest ---------- */
 .section-title{
@@ -238,6 +265,13 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:26px 0 10px;l
 }
 .btn:active{transform:scale(.97);}
 .btn:disabled{opacity:.45;cursor:not-allowed;box-shadow:none;}
+.btn-ghost{
+  margin-top:10px;
+  background:var(--glass-strong);
+  color:var(--cream);
+  box-shadow:none;
+  border:1px solid var(--glass-border);
+}
 .error-msg{color:var(--danger);font-size:13px;margin-top:10px;min-height:16px;}
 
 /* ---------- утилиты ---------- */
@@ -341,6 +375,7 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:26px 0 10px;l
 
 <div class="bg"></div>
 
+<div class="app-scroll" id="appScroll">
 <header class="topbar">
   <div class="topbar-inner">
     <div class="topbar-spacer"></div>
@@ -381,33 +416,49 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:26px 0 10px;l
     <div class="claimed-count" id="claimedCount"></div>
   </div>
 
+  <button class="save-contact-btn glass" id="saveContactBtn" type="button">
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+      <circle cx="9" cy="7" r="4"></circle>
+      <path d="M19 8v6M22 11h-6"></path>
+    </svg>
+    Сохранить контакт SHAFRAN
+  </button>
+
   <div class="section-title">Каталог <span id="catalogCount"></span></div>
   <div class="grid" id="catalogGrid"></div>
 
   <footer>SHAFRAN · сделано с любовью к деталям</footer>
 </main>
+</div>
 
 <div id="authOverlay" class="modal-overlay hidden">
   <div class="modal-card glass">
     <button class="modal-close" id="modalClose" type="button" aria-label="Закрыть">×</button>
-    <h1>Добро пожаловать</h1>
-    <p>Войдите, чтобы участвовать в розыгрыше номеров</p>
+    <h1 id="authTitle">Добро пожаловать</h1>
+    <p id="authHint">Введите номер телефона, чтобы войти</p>
 
-    <form id="authForm" autocomplete="off">
+    <form id="loginStepForm" autocomplete="off">
       <div class="field">
-        <label for="phone">Номер телефона</label>
-        <input id="phone" type="tel" inputmode="tel" placeholder="+7 900 000-00-00" required>
+        <label for="loginInput">Номер телефона</label>
+        <input id="loginInput" type="tel" inputmode="tel" placeholder="+7 900 000-00-00" required>
       </div>
-      <div class="field">
-        <label for="firstName">Имя</label>
-        <input id="firstName" type="text" placeholder="Ваше имя" required>
-      </div>
-      <div class="field">
-        <label for="lastName">Фамилия</label>
-        <input id="lastName" type="text" placeholder="Ваша фамилия" required>
-      </div>
-      <button class="btn" type="submit" id="authBtn">Войти</button>
+      <button class="btn" type="submit" id="loginStepBtn">Далее</button>
       <div class="error-msg" id="authError"></div>
+    </form>
+
+    <form id="passwordStepForm" class="hidden" autocomplete="off">
+      <div class="field hidden" id="nameField">
+        <label for="nameInput">Имя</label>
+        <input id="nameInput" type="text" placeholder="Ваше имя">
+      </div>
+      <div class="field">
+        <label for="passwordInput" id="passwordLabel">Пароль</label>
+        <input id="passwordInput" type="password" placeholder="••••••" required>
+      </div>
+      <button class="btn" type="submit" id="passwordStepBtn">Войти</button>
+      <button class="btn btn-ghost" type="button" id="backBtn">Назад</button>
+      <div class="error-msg" id="authError2"></div>
     </form>
   </div>
 </div>
@@ -419,6 +470,7 @@ const state = {
   timerEnd: null,
   timerRunning: false,
   queueNumber: null,
+  isAdmin: false,
   ws: null,
   countdownTimer: null,
   pendingClaim: false,
@@ -429,9 +481,19 @@ const profileIcon   = document.getElementById("profileIcon");
 const profileInitial= document.getElementById("profileInitial");
 const authOverlay   = document.getElementById("authOverlay");
 const modalClose    = document.getElementById("modalClose");
-const authForm      = document.getElementById("authForm");
-const authBtn       = document.getElementById("authBtn");
+const authHint      = document.getElementById("authHint");
+const loginStepForm = document.getElementById("loginStepForm");
+const loginInput    = document.getElementById("loginInput");
+const loginStepBtn  = document.getElementById("loginStepBtn");
 const authError     = document.getElementById("authError");
+const passwordStepForm = document.getElementById("passwordStepForm");
+const nameField      = document.getElementById("nameField");
+const nameInput      = document.getElementById("nameInput");
+const passwordLabel  = document.getElementById("passwordLabel");
+const passwordInput  = document.getElementById("passwordInput");
+const passwordStepBtn= document.getElementById("passwordStepBtn");
+const authError2     = document.getElementById("authError2");
+const backBtn        = document.getElementById("backBtn");
 const helloBlock    = document.getElementById("helloBlock");
 const helloName     = document.getElementById("helloName");
 const timerCard     = document.getElementById("timerCard");
@@ -444,11 +506,28 @@ const numberBig     = document.getElementById("numberBig");
 const claimedCount  = document.getElementById("claimedCount");
 const burst         = document.getElementById("burst");
 
-// ---------- модалка входа ----------
-function openAuth() {
+// ---------- модалка входа: шаг 1 (номер) → шаг 2 (пароль или имя+пароль) ----------
+let currentLogin = "";
+let loginMode = "login"; // "login" | "register"
+
+function resetAuthSteps() {
+  loginStepForm.classList.remove("hidden");
+  passwordStepForm.classList.add("hidden");
+  authHint.textContent = "Введите номер телефона, чтобы войти";
   authError.textContent = "";
+  authError2.textContent = "";
+  loginInput.value = "";
+  passwordInput.value = "";
+  nameInput.value = "";
+  loginStepBtn.disabled = false;
+  loginStepBtn.textContent = "Далее";
+}
+
+function openAuth() {
+  resetAuthSteps();
   authOverlay.classList.remove("hidden");
   requestAnimationFrame(() => requestAnimationFrame(() => authOverlay.classList.add("open")));
+  setTimeout(() => loginInput.focus(), 300);
 }
 function closeAuth() {
   authOverlay.classList.remove("open");
@@ -461,31 +540,87 @@ profileBtn.addEventListener("click", () => {
 modalClose.addEventListener("click", closeAuth);
 authOverlay.addEventListener("click", (e) => { if (e.target === authOverlay) closeAuth(); });
 
-authForm.addEventListener("submit", async (e) => {
+backBtn.addEventListener("click", () => {
+  passwordStepForm.classList.add("hidden");
+  loginStepForm.classList.remove("hidden");
+  authHint.textContent = "Введите номер телефона, чтобы войти";
+  authError2.textContent = "";
+});
+
+loginStepForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   authError.textContent = "";
-  authBtn.disabled = true;
-  authBtn.innerHTML = '<span class="spinner"></span>Входим…';
+  const login = loginInput.value.trim();
+  if (!login) return;
 
-  const phone = document.getElementById("phone").value.trim();
-  const firstName = document.getElementById("firstName").value.trim();
-  const lastName = document.getElementById("lastName").value.trim();
-
+  loginStepBtn.disabled = true;
+  loginStepBtn.innerHTML = '<span class="spinner"></span>Проверяем…';
   try {
-    const res = await fetch(`${API}/api/register`, {
+    const res = await fetch(`${API}/api/check-login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone, first_name: firstName, last_name: lastName }),
+      body: JSON.stringify({ login }),
     });
-    if (!res.ok) throw new Error((await res.json()).detail || "Ошибка входа");
+    if (!res.ok) throw new Error("Не удалось проверить номер");
     const data = await res.json();
 
+    currentLogin = login;
+    loginMode = data.exists ? "login" : "register";
+
+    if (loginMode === "login") {
+      nameField.classList.add("hidden");
+      nameInput.required = false;
+      passwordLabel.textContent = "Пароль";
+      passwordStepBtn.textContent = "Войти";
+      authHint.textContent = "Этот номер уже зарегистрирован — введите пароль";
+    } else {
+      nameField.classList.remove("hidden");
+      nameInput.required = true;
+      passwordLabel.textContent = "Придумайте пароль";
+      passwordStepBtn.textContent = "Зарегистрироваться";
+      authHint.textContent = "Такого номера ещё нет — введите имя и придумайте пароль";
+    }
+
+    loginStepForm.classList.add("hidden");
+    passwordStepForm.classList.remove("hidden");
+    setTimeout(() => (loginMode === "login" ? passwordInput : nameInput).focus(), 100);
+  } catch (err) {
+    authError.textContent = err.message || "Что-то пошло не так, попробуйте ещё раз";
+  } finally {
+    loginStepBtn.disabled = false;
+    loginStepBtn.textContent = "Далее";
+  }
+});
+
+passwordStepForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  authError2.textContent = "";
+  const password = passwordInput.value;
+  const name = nameInput.value.trim();
+
+  passwordStepBtn.disabled = true;
+  passwordStepBtn.innerHTML = '<span class="spinner"></span>Секунду…';
+  try {
+    const endpoint = loginMode === "login" ? "/api/login" : "/api/register";
+    const body = loginMode === "login"
+      ? { login: currentLogin, password }
+      : { login: currentLogin, name, password };
+
+    const res = await fetch(`${API}${endpoint}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Не удалось войти");
+
     localStorage.setItem("shafran_token", data.token);
-    localStorage.setItem("shafran_name", `${data.first_name} ${data.last_name}`);
+    localStorage.setItem("shafran_name", data.name);
     state.token = data.token;
     state.queueNumber = data.queue_number;
+    state.isAdmin = !!data.is_admin;
 
-    applyLoggedIn(data.first_name);
+    applyLoggedIn(data.name, state.isAdmin);
     closeAuth();
 
     if (state.pendingClaim) {
@@ -493,20 +628,67 @@ authForm.addEventListener("submit", async (e) => {
       doClaim();
     }
   } catch (err) {
-    authError.textContent = err.message || "Не удалось войти, попробуйте ещё раз";
+    authError2.textContent = err.message || "Не удалось войти, попробуйте ещё раз";
   } finally {
-    authBtn.disabled = false;
-    authBtn.textContent = "Войти";
+    passwordStepBtn.disabled = false;
+    passwordStepBtn.textContent = loginMode === "login" ? "Войти" : "Зарегистрироваться";
   }
 });
 
-function applyLoggedIn(firstName) {
+function applyLoggedIn(name, isAdmin) {
   profileIcon.classList.add("hidden");
   profileInitial.classList.remove("hidden");
-  profileInitial.textContent = (firstName || "?").trim().charAt(0).toUpperCase();
+  profileInitial.textContent = (name || "?").trim().charAt(0).toUpperCase();
   helloBlock.classList.remove("hidden");
-  helloName.textContent = firstName || localStorage.getItem("shafran_name") || "";
+  helloName.textContent = name || localStorage.getItem("shafran_name") || "";
   if (state.queueNumber) showNumber(state.queueNumber);
+  if (isAdmin) showAdminPanel();
+}
+
+// ---------- мини-панель админа прямо на сайте ----------
+function showAdminPanel() {
+  if (document.getElementById("adminPanel")) return;
+  const panel = document.createElement("div");
+  panel.id = "adminPanel";
+  panel.className = "glass admin-panel";
+  panel.innerHTML = `
+    <div class="admin-title">Панель администратора</div>
+    <div class="field">
+      <label>Секунд до старта выдачи номеров</label>
+      <input id="adminSeconds" type="number" value="60" min="1">
+    </div>
+    <button class="btn" id="adminStartBtn" type="button">Запустить таймер для всех</button>
+    <button class="btn btn-ghost" id="adminResetBtn" type="button">Сбросить (новый забег)</button>
+    <div class="error-msg" id="adminMsg" style="color:var(--muted)"></div>
+  `;
+  helloBlock.after(panel);
+
+  document.getElementById("adminStartBtn").addEventListener("click", async () => {
+    const seconds = Number(document.getElementById("adminSeconds").value);
+    const msg = document.getElementById("adminMsg");
+    try {
+      const res = await fetch(`${API}/api/admin/timer`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: state.token, seconds }),
+      });
+      const data = await res.json();
+      msg.style.color = res.ok ? "var(--muted)" : "var(--danger)";
+      msg.textContent = res.ok ? "Таймер запущен для всех участников" : (data.detail || "Ошибка");
+    } catch { msg.textContent = "Не удалось связаться с сервером"; }
+  });
+
+  document.getElementById("adminResetBtn").addEventListener("click", async () => {
+    const msg = document.getElementById("adminMsg");
+    try {
+      const res = await fetch(`${API}/api/admin/reset`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: state.token, wipe_users: false }),
+      });
+      const data = await res.json();
+      msg.style.color = res.ok ? "var(--muted)" : "var(--danger)";
+      msg.textContent = res.ok ? "Сброшено, можно запускать новый забег" : (data.detail || "Ошибка");
+    } catch { msg.textContent = "Не удалось связаться с сервером"; }
+  });
 }
 
 // ---------- загрузка ----------
@@ -521,7 +703,8 @@ function applyLoggedIn(firstName) {
     if (!res.ok) throw new Error();
     const me = await res.json();
     state.queueNumber = me.queue_number;
-    applyLoggedIn(me.first_name);
+    state.isAdmin = !!me.is_admin;
+    applyLoggedIn(me.name, state.isAdmin);
   } catch {
     localStorage.removeItem("shafran_token");
     state.token = null;
@@ -824,19 +1007,89 @@ function animateClaimedCount(from, to) {
 }
 (function initParallax() {
   const bg = document.querySelector(".bg");
-  if (!bg || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const scroller = document.getElementById("appScroll");
+  if (!bg || !scroller || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   let ticking = false;
   function onScroll() {
     if (ticking) return;
     ticking = true;
     requestAnimationFrame(() => {
-      const offset = Math.min(window.scrollY * 0.06, 40); // ограничено, фон не "уезжает"
+      const offset = Math.min(scroller.scrollTop * 0.06, 40); // ограничено, фон не "уезжает"
       bg.style.transform = `translate3d(0, ${offset}px, 0)`;
       ticking = false;
     });
   }
-  window.addEventListener("scroll", onScroll, { passive: true });
+  scroller.addEventListener("scroll", onScroll, { passive: true });
 })();
+
+// ---------- "Сохранить контакт" — карточка магазина в Контакты телефона ----------
+// ВАЖНО: замени телефон и, если нужно, сайт на настоящие данные магазина.
+const SHOP_CONTACT = {
+  name: "SHAFRAN",
+  phone: "+7 900 000-00-00", // ← замени на настоящий номер магазина
+  url: location.origin,
+};
+
+function foldVCardLine(line) {
+  // сворачиваем длинные строки по спецификации vCard (RFC 6350): не больше
+  // ~75 символов в строке, продолжение — с новой строки, начинающейся с пробела
+  const CHUNK = 74;
+  if (line.length <= CHUNK) return line;
+  let out = line.slice(0, CHUNK);
+  let rest = line.slice(CHUNK);
+  while (rest.length > 0) {
+    out += "\r\n " + rest.slice(0, CHUNK - 1);
+    rest = rest.slice(CHUNK - 1);
+  }
+  return out;
+}
+
+const saveContactBtn = document.getElementById("saveContactBtn");
+saveContactBtn.addEventListener("click", async () => {
+  const originalHTML = saveContactBtn.innerHTML;
+  saveContactBtn.disabled = true;
+  saveContactBtn.innerHTML = '<span class="spinner"></span>Готовим контакт…';
+
+  let photoLine = "";
+  try {
+    const res = await fetch("/static/logo.png");
+    if (res.ok) {
+      const blob = await res.blob();
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      photoLine = foldVCardLine(`PHOTO;ENCODING=b;TYPE=PNG:${base64}`) + "\r\n";
+    }
+  } catch {
+    photoLine = ""; // логотип не загрузился — сохраняем контакт без фото, не блокируем сценарий
+  }
+
+  const vcard =
+    "BEGIN:VCARD\r\n" +
+    "VERSION:3.0\r\n" +
+    `FN:${SHOP_CONTACT.name}\r\n` +
+    `ORG:${SHOP_CONTACT.name}\r\n` +
+    `TEL;TYPE=CELL:${SHOP_CONTACT.phone}\r\n` +
+    `URL:${SHOP_CONTACT.url}\r\n` +
+    photoLine +
+    "END:VCARD\r\n";
+
+  const blob = new Blob([vcard], { type: "text/vcard;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "SHAFRAN.vcf";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+
+  saveContactBtn.disabled = false;
+  saveContactBtn.innerHTML = originalHTML;
+});
 
 // ---------- PWA ----------
 if ("serviceWorker" in navigator) {
