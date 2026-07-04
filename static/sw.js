@@ -43,6 +43,9 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/ws")) {
     return; // всегда сеть, никогда не кэшируем
   }
+  if (url.pathname === "/static/contact-photo.png") {
+    return; // всегда свежая версия, без кэша (см. cache-busting в index.html)
+  }
   if (event.request.method !== "GET") return;
 
   const isHTML =
