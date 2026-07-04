@@ -1023,11 +1023,16 @@ function animateClaimedCount(from, to) {
 })();
 
 // ---------- "Сохранить контакт" — карточка магазина в Контакты телефона ----------
-// ВАЖНО: замени телефон и, если нужно, сайт на настоящие данные магазина.
+// ВАЖНО: замени телефон на настоящий номер магазина.
+// Фото для контакта берётся ИЗ ОТДЕЛЬНОГО квадратного файла static/contact-photo.png —
+// не из static/logo.png (тот — широкий баннер с надписью, приложение "Контакты"
+// обрежет его в квадрат/круг и надпись пострадает). Для контакта нужен именно
+// квадратный логотип/иконка, см. инструкцию в README.
 const SHOP_CONTACT = {
   name: "SHAFRAN",
-  phone: "+7 963 829-99-91", // ← замени на настоящий номер магазина
+  phone: "+7 900 000-00-00", // ← замени на настоящий номер магазина
   url: location.origin,
+  photoPath: "/static/contact-photo.png",
 };
 
 function foldVCardLine(line) {
@@ -1052,7 +1057,9 @@ saveContactBtn.addEventListener("click", async () => {
 
   let photoLine = "";
   try {
-    const res = await fetch("/static/logo.png");
+    // добавляем случайный параметр — так фото для контакта всегда
+    // берётся свежим с сервера, а не залипает в кэше service worker'а
+    const res = await fetch(`${SHOP_CONTACT.photoPath}?v=${Date.now()}`, { cache: "no-store" });
     if (res.ok) {
       const blob = await res.blob();
       const base64 = await new Promise((resolve, reject) => {
