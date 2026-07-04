@@ -1,108 +1,167 @@
 """
 SHAFRAN — бэкенд.
-Python 3.11+, FastAPI, SQLite (WAL), WebSocket для мгновенной синхронизации таймера.
+Python 3.11+, FastAPI, PostgreSQL (Neon) через asyncpg, WebSocket для
+мгновенной синхронизации таймера.
 
-Важно про честность очереди номеров:
+Единая система входа (без отдельных "регистрация"/"вход" разделов):
+  1. Человек вводит логин (номер телефона).
+  2. POST /api/check-login — сервер смотрит, есть ли такой логин в базе.
+  3. Если есть — просим только пароль → POST /api/login.
+     Если нет — просим имя и пароль → POST /api/register.
+
+Админ — обычный пользователь с флагом is_admin=true в той же таблице.
+Управление таймером (/api/admin/*) теперь защищено токеном админа,
+а не отдельным статическим ключом — то есть система входа действительно одна.
+
+Честность очереди номеров:
 - Выдача номера идёт ТОЛЬКО через POST /api/claim.
 - Внутри claim() стоит asyncio.Lock — пока один запрос не завершится
-  (не запишется в БД), следующий не начнёт выполняться. Это гарантирует,
-  что даже если 50 человек нажмут кнопку одновременно, номера уйдут
-  строго по одному, без повторов.
-- Дополнительно поле queue_number в таблице users помечено UNIQUE —
-  это второй, "аппаратный" уровень защиты на случай программной ошибки.
+  (не запишется в БД), следующий не начнёт выполняться. Поэтому даже
+  если 50 человек нажмут кнопку одновременно, номера уйдут строго по
+  одному, без повторов.
 - Запускать процесс нужно ОДНИМ воркером (uvicorn ... --workers 1).
-  Один воркер = один Lock на всех = гарантия отсутствия дублей.
-  Render Web Service по умолчанию именно так и работает.
 """
 
 import asyncio
+import hashlib
 import os
 import secrets
-import sqlite3
-from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Optional
 
+import asyncpg
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from urllib.parse import urlparse
 
-DB_PATH = os.environ.get("SHAFRAN_DB", "shafran.db")
-ADMIN_KEY = os.environ.get("SHAFRAN_ADMIN_KEY", "shafran-admin-2026")
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+if not DATABASE_URL:
+    raise RuntimeError(
+        "Не задана переменная окружения DATABASE_URL "
+        "(строка подключения к PostgreSQL / Neon)."
+    )
+
+# asyncpg не понимает параметр channel_binding из строки подключения Neon —
+# убираем query-параметры и подключаемся с ssl отдельно.
+_DB_DSN = DATABASE_URL.split("?", 1)[0]
+_parsed_host = urlparse(DATABASE_URL).hostname or ""
+_USE_SSL = _parsed_host not in ("localhost", "127.0.0.1")
+
+ADMIN_SEED_LOGIN = os.environ.get("SHAFRAN_ADMIN_LOGIN", "admin")
+ADMIN_SEED_PASSWORD = os.environ.get("SHAFRAN_ADMIN_PASSWORD", "123")
+ADMIN_SEED_NAME = "Администратор"
 
 app = FastAPI(title="SHAFRAN")
 
 claim_lock = asyncio.Lock()
 ws_clients: set[WebSocket] = set()
+pool: Optional[asyncpg.Pool] = None
+
+
+# ---------------------------------------------------------------- пароли
+
+def hash_password(password: str, salt: Optional[str] = None) -> tuple[str, str]:
+    if salt is None:
+        salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256", password.encode("utf-8"), bytes.fromhex(salt), 200_000
+    ).hex()
+    return digest, salt
+
+
+def verify_password(password: str, salt: str, expected_hash: str) -> bool:
+    digest, _ = hash_password(password, salt)
+    return secrets.compare_digest(digest, expected_hash)
 
 
 # ---------------------------------------------------------------- database
 
-@contextmanager
-def db():
-    conn = sqlite3.connect(DB_PATH, timeout=10)
-    conn.execute("PRAGMA journal_mode=WAL;")
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-        conn.commit()
-    finally:
-        conn.close()
+async def get_pool() -> asyncpg.Pool:
+    global pool
+    if pool is None:
+        pool = await asyncpg.create_pool(dsn=_DB_DSN, ssl=_USE_SSL, min_size=1, max_size=8)
+    return pool
 
 
-def init_db():
-    with db() as conn:
-        conn.execute("""
+async def init_db():
+    p = await get_pool()
+    async with p.acquire() as conn:
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                phone TEXT UNIQUE NOT NULL,
-                first_name TEXT NOT NULL,
-                last_name TEXT NOT NULL,
+                id SERIAL PRIMARY KEY,
+                login TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                password_salt TEXT NOT NULL,
                 token TEXT UNIQUE NOT NULL,
+                is_admin BOOLEAN NOT NULL DEFAULT FALSE,
                 queue_number INTEGER UNIQUE,
-                claimed_at TEXT,
-                created_at TEXT NOT NULL
+                claimed_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now()
             );
         """)
-        conn.execute("""
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS event_state (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
-                timer_end TEXT,
-                timer_running INTEGER NOT NULL DEFAULT 0,
+                timer_end TIMESTAMPTZ,
+                timer_running BOOLEAN NOT NULL DEFAULT FALSE,
                 next_number INTEGER NOT NULL DEFAULT 1
             );
         """)
-        conn.execute("""
-            INSERT OR IGNORE INTO event_state (id, timer_end, timer_running, next_number)
-            VALUES (1, NULL, 0, 1);
+        await conn.execute("""
+            INSERT INTO event_state (id, timer_end, timer_running, next_number)
+            VALUES (1, NULL, FALSE, 1)
+            ON CONFLICT (id) DO NOTHING;
         """)
 
+        # сеем админ-аккаунт, если его ещё нет
+        existing_admin = await conn.fetchrow(
+            "SELECT id FROM users WHERE login = $1", ADMIN_SEED_LOGIN
+        )
+        if not existing_admin:
+            digest, salt = hash_password(ADMIN_SEED_PASSWORD)
+            await conn.execute(
+                """INSERT INTO users (login, name, password_hash, password_salt, token, is_admin)
+                   VALUES ($1, $2, $3, $4, $5, TRUE)""",
+                ADMIN_SEED_LOGIN, ADMIN_SEED_NAME, digest, salt, secrets.token_urlsafe(24),
+            )
 
-init_db()
+
+@app.on_event("startup")
+async def on_startup():
+    await init_db()
 
 
-def now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def get_state_row(conn) -> sqlite3.Row:
-    return conn.execute("SELECT * FROM event_state WHERE id = 1").fetchone()
+@app.on_event("shutdown")
+async def on_shutdown():
+    global pool
+    if pool is not None:
+        await pool.close()
 
 
 def queue_is_open(state_row) -> bool:
     if not state_row["timer_running"] or not state_row["timer_end"]:
         return False
-    end = datetime.fromisoformat(state_row["timer_end"])
-    return datetime.now(timezone.utc) >= end
+    return datetime.now(timezone.utc) >= state_row["timer_end"]
 
 
 # ------------------------------------------------------------------ models
 
+class CheckLoginPayload(BaseModel):
+    login: str
+
+
 class RegisterPayload(BaseModel):
-    phone: str
-    first_name: str
-    last_name: str
+    login: str
+    name: str
+    password: str
+
+
+class LoginPayload(BaseModel):
+    login: str
+    password: str
 
 
 class ClaimPayload(BaseModel):
@@ -110,12 +169,12 @@ class ClaimPayload(BaseModel):
 
 
 class AdminTimerPayload(BaseModel):
-    admin_key: str
+    token: str
     seconds: int
 
 
 class AdminResetPayload(BaseModel):
-    admin_key: str
+    token: str
     wipe_users: bool = False
 
 
@@ -138,7 +197,6 @@ async def ws_endpoint(websocket: WebSocket):
     ws_clients.add(websocket)
     try:
         while True:
-            # мы не ждём сообщений от клиента, просто держим соединение живым
             await websocket.receive_text()
     except WebSocketDisconnect:
         pass
@@ -149,97 +207,126 @@ async def ws_endpoint(websocket: WebSocket):
 # ------------------------------------------------------------------- api
 
 @app.get("/api/state")
-def api_state():
-    with db() as conn:
-        s = get_state_row(conn)
-        claimed = conn.execute(
-            "SELECT COUNT(*) c FROM users WHERE queue_number IS NOT NULL"
-        ).fetchone()["c"]
+async def api_state():
+    p = await get_pool()
+    async with p.acquire() as conn:
+        s = await conn.fetchrow("SELECT * FROM event_state WHERE id = 1")
+        claimed = await conn.fetchval(
+            "SELECT COUNT(*) FROM users WHERE queue_number IS NOT NULL"
+        )
         return {
-            "timer_end": s["timer_end"],
+            "timer_end": s["timer_end"].isoformat() if s["timer_end"] else None,
             "timer_running": bool(s["timer_running"]),
             "queue_open": queue_is_open(s),
             "claimed_count": claimed,
-            "server_time": now_iso(),
+            "server_time": datetime.now(timezone.utc).isoformat(),
         }
 
 
+@app.post("/api/check-login")
+async def api_check_login(payload: CheckLoginPayload):
+    login = payload.login.strip()
+    if not login:
+        raise HTTPException(400, "Введите номер телефона")
+    p = await get_pool()
+    async with p.acquire() as conn:
+        row = await conn.fetchrow("SELECT id FROM users WHERE login = $1", login)
+        return {"exists": row is not None}
+
+
 @app.post("/api/register")
-def api_register(payload: RegisterPayload):
-    phone = payload.phone.strip()
-    first_name = payload.first_name.strip()
-    last_name = payload.last_name.strip()
-    if not phone or not first_name or not last_name:
-        raise HTTPException(400, "Заполните телефон, имя и фамилию")
+async def api_register(payload: RegisterPayload):
+    login = payload.login.strip()
+    name = payload.name.strip()
+    password = payload.password
 
-    with db() as conn:
-        existing = conn.execute(
-            "SELECT * FROM users WHERE phone = ?", (phone,)
-        ).fetchone()
+    if not login or not name or not password:
+        raise HTTPException(400, "Заполните телефон, имя и пароль")
+    if len(password) < 3:
+        raise HTTPException(400, "Пароль слишком короткий")
+
+    digest, salt = hash_password(password)
+    token = secrets.token_urlsafe(24)
+
+    p = await get_pool()
+    async with p.acquire() as conn:
+        existing = await conn.fetchrow("SELECT id FROM users WHERE login = $1", login)
         if existing:
-            return {
-                "token": existing["token"],
-                "first_name": existing["first_name"],
-                "last_name": existing["last_name"],
-                "queue_number": existing["queue_number"],
-            }
+            raise HTTPException(409, "Такой номер уже зарегистрирован, введите пароль")
 
-        token = secrets.token_urlsafe(24)
-        conn.execute(
-            """INSERT INTO users (phone, first_name, last_name, token, created_at)
-               VALUES (?, ?, ?, ?, ?)""",
-            (phone, first_name, last_name, token, now_iso()),
+        row = await conn.fetchrow(
+            """INSERT INTO users (login, name, password_hash, password_salt, token)
+               VALUES ($1, $2, $3, $4, $5)
+               RETURNING name, token, is_admin, queue_number""",
+            login, name, digest, salt, token,
         )
         return {
-            "token": token,
-            "first_name": first_name,
-            "last_name": last_name,
-            "queue_number": None,
+            "token": row["token"],
+            "name": row["name"],
+            "is_admin": row["is_admin"],
+            "queue_number": row["queue_number"],
+        }
+
+
+@app.post("/api/login")
+async def api_login(payload: LoginPayload):
+    login = payload.login.strip()
+    password = payload.password
+
+    p = await get_pool()
+    async with p.acquire() as conn:
+        row = await conn.fetchrow("SELECT * FROM users WHERE login = $1", login)
+        if not row or not verify_password(password, row["password_salt"], row["password_hash"]):
+            raise HTTPException(401, "Неверный номер или пароль")
+        return {
+            "token": row["token"],
+            "name": row["name"],
+            "is_admin": row["is_admin"],
+            "queue_number": row["queue_number"],
         }
 
 
 @app.get("/api/me")
-def api_me(token: str):
-    with db() as conn:
-        u = conn.execute("SELECT * FROM users WHERE token = ?", (token,)).fetchone()
+async def api_me(token: str):
+    p = await get_pool()
+    async with p.acquire() as conn:
+        u = await conn.fetchrow("SELECT * FROM users WHERE token = $1", token)
         if not u:
             raise HTTPException(404, "Пользователь не найден")
         return {
-            "first_name": u["first_name"],
-            "last_name": u["last_name"],
+            "name": u["name"],
             "queue_number": u["queue_number"],
+            "is_admin": u["is_admin"],
         }
 
 
 @app.post("/api/claim")
 async def api_claim(payload: ClaimPayload):
     async with claim_lock:
-        with db() as conn:
-            u = conn.execute(
-                "SELECT * FROM users WHERE token = ?", (payload.token,)
-            ).fetchone()
+        p = await get_pool()
+        async with p.acquire() as conn:
+            u = await conn.fetchrow("SELECT * FROM users WHERE token = $1", payload.token)
             if not u:
                 raise HTTPException(404, "Пользователь не найден")
 
             if u["queue_number"] is not None:
-                # уже получал номер — просто возвращаем его же, без побочных эффектов
                 return {"queue_number": u["queue_number"]}
 
-            state = get_state_row(conn)
+            state = await conn.fetchrow("SELECT * FROM event_state WHERE id = 1")
             if not queue_is_open(state):
                 raise HTTPException(400, "Выдача номеров ещё не началась")
 
             number = state["next_number"]
-            conn.execute(
-                "UPDATE users SET queue_number = ?, claimed_at = ? WHERE id = ?",
-                (number, now_iso(), u["id"]),
+            await conn.execute(
+                "UPDATE users SET queue_number = $1, claimed_at = $2 WHERE id = $3",
+                number, datetime.now(timezone.utc), u["id"],
             )
-            conn.execute(
-                "UPDATE event_state SET next_number = ? WHERE id = 1", (number + 1,)
+            await conn.execute(
+                "UPDATE event_state SET next_number = $1 WHERE id = 1", number + 1
             )
-            claimed = conn.execute(
-                "SELECT COUNT(*) c FROM users WHERE queue_number IS NOT NULL"
-            ).fetchone()["c"]
+            claimed = await conn.fetchval(
+                "SELECT COUNT(*) FROM users WHERE queue_number IS NOT NULL"
+            )
 
         await broadcast({"type": "claimed_count", "claimed_count": claimed})
         return {"queue_number": number}
@@ -247,60 +334,75 @@ async def api_claim(payload: ClaimPayload):
 
 # ------------------------------------------------------------- admin api
 
-def check_admin(key: str):
-    if not secrets.compare_digest(key, ADMIN_KEY):
-        raise HTTPException(403, "Неверный ключ администратора")
+async def require_admin(token: str) -> None:
+    p = await get_pool()
+    async with p.acquire() as conn:
+        u = await conn.fetchrow("SELECT is_admin FROM users WHERE token = $1", token)
+        if not u or not u["is_admin"]:
+            raise HTTPException(403, "Доступ только для администратора")
 
 
 @app.post("/api/admin/timer")
 async def admin_start_timer(payload: AdminTimerPayload):
-    check_admin(payload.admin_key)
+    await require_admin(payload.token)
     if payload.seconds <= 0:
         raise HTTPException(400, "seconds должно быть больше нуля")
 
     end = datetime.now(timezone.utc).timestamp() + payload.seconds
-    end_iso = datetime.fromtimestamp(end, tz=timezone.utc).isoformat()
+    end_dt = datetime.fromtimestamp(end, tz=timezone.utc)
 
-    with db() as conn:
-        conn.execute(
-            "UPDATE event_state SET timer_end = ?, timer_running = 1 WHERE id = 1",
-            (end_iso,),
+    p = await get_pool()
+    async with p.acquire() as conn:
+        await conn.execute(
+            "UPDATE event_state SET timer_end = $1, timer_running = TRUE WHERE id = 1",
+            end_dt,
         )
 
-    await broadcast({"type": "timer_start", "timer_end": end_iso})
-    return {"timer_end": end_iso}
+    await broadcast({"type": "timer_start", "timer_end": end_dt.isoformat()})
+    return {"timer_end": end_dt.isoformat()}
 
 
 @app.post("/api/admin/reset")
 async def admin_reset(payload: AdminResetPayload):
-    check_admin(payload.admin_key)
-    with db() as conn:
-        conn.execute(
-            "UPDATE event_state SET timer_end = NULL, timer_running = 0, next_number = 1 WHERE id = 1"
+    await require_admin(payload.token)
+    p = await get_pool()
+    async with p.acquire() as conn:
+        await conn.execute(
+            "UPDATE event_state SET timer_end = NULL, timer_running = FALSE, next_number = 1 WHERE id = 1"
         )
         if payload.wipe_users:
-            conn.execute("DELETE FROM users")
+            await conn.execute("DELETE FROM users WHERE is_admin = FALSE")
         else:
-            conn.execute("UPDATE users SET queue_number = NULL, claimed_at = NULL")
+            await conn.execute("UPDATE users SET queue_number = NULL, claimed_at = NULL")
 
     await broadcast({"type": "reset"})
     return {"ok": True}
 
 
 @app.get("/api/admin/stats")
-def admin_stats(admin_key: str):
-    check_admin(admin_key)
-    with db() as conn:
-        s = get_state_row(conn)
-        users = conn.execute(
-            "SELECT phone, first_name, last_name, queue_number, claimed_at FROM users "
-            "ORDER BY queue_number IS NULL, queue_number ASC"
-        ).fetchall()
+async def admin_stats(token: str):
+    await require_admin(token)
+    p = await get_pool()
+    async with p.acquire() as conn:
+        s = await conn.fetchrow("SELECT * FROM event_state WHERE id = 1")
+        users = await conn.fetch(
+            """SELECT login, name, queue_number, claimed_at FROM users
+               WHERE is_admin = FALSE
+               ORDER BY queue_number IS NULL, queue_number ASC"""
+        )
         return {
-            "timer_end": s["timer_end"],
+            "timer_end": s["timer_end"].isoformat() if s["timer_end"] else None,
             "timer_running": bool(s["timer_running"]),
             "next_number": s["next_number"],
-            "users": [dict(u) for u in users],
+            "users": [
+                {
+                    "login": u["login"],
+                    "name": u["name"],
+                    "queue_number": u["queue_number"],
+                    "claimed_at": u["claimed_at"].isoformat() if u["claimed_at"] else None,
+                }
+                for u in users
+            ],
         }
 
 
