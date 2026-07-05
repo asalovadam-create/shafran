@@ -199,6 +199,20 @@ body{
 .save-contact-btn:active{transform:scale(.97);}
 .save-contact-btn svg{flex-shrink:0;color:var(--saffron);}
 
+.quick-actions{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:10px;
+  margin-bottom:14px;
+}
+.quick-btn{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;
+  padding:16px 8px;text-decoration:none;color:var(--cream);
+  border:1px solid var(--glass-border);
+  transition:transform .15s ease;
+}
+.quick-btn:active{transform:scale(.95);}
+.quick-btn svg{color:var(--saffron);}
+.quick-btn span{font-size:11px;font-weight:600;letter-spacing:.02em;}
+
 /* ---------- каталог: masonry в стиле Pinterest ---------- */
 .section-title{
   font-family:'Fraunces',serif;font-weight:600;font-size:20px;
@@ -414,6 +428,30 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:26px 0 10px;l
     </div>
 
     <div class="claimed-count" id="claimedCount"></div>
+  </div>
+
+  <div class="quick-actions">
+    <a class="quick-btn glass" href="tel:+79638299991" aria-label="Позвонить">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.78.62 2.63a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.45-1.19a2 2 0 0 1 2.11-.45c.85.29 1.73.5 2.63.62A2 2 0 0 1 22 16.92z"></path>
+      </svg>
+      <span>Позвонить</span>
+    </a>
+    <a class="quick-btn glass" href="https://wa.me/79638299991" target="_blank" rel="noopener" aria-label="WhatsApp">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 11.5a8.5 8.5 0 0 1-12.9 7.3L3 20l1.3-5A8.5 8.5 0 1 1 21 11.5z"></path>
+        <path d="M8.5 10.5c0 3 2.5 5.5 5.5 5.5"></path>
+      </svg>
+      <span>WhatsApp</span>
+    </a>
+    <a class="quick-btn glass" href="https://www.instagram.com/shafran_grozny_" target="_blank" rel="noopener" aria-label="Instagram">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="5"></rect>
+        <circle cx="12" cy="12" r="4"></circle>
+        <circle cx="17.2" cy="6.8" r="1"></circle>
+      </svg>
+      <span>Instagram</span>
+    </a>
   </div>
 
   <button class="save-contact-btn glass" id="saveContactBtn" type="button">
@@ -1030,7 +1068,7 @@ function animateClaimedCount(from, to) {
 // квадратный логотип/иконка, см. инструкцию в README.
 const SHOP_CONTACT = {
   name: "SHAFRAN",
-  phone: "+7 963 829-99-91", // ← замени на настоящий номер магазина
+  phone: "+7 963 829-99-91",
   url: location.origin,
   photoPath: "/static/contact-photo.png",
 };
